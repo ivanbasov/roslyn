@@ -8202,5 +8202,227 @@ class C
 }
 ");
         }
+
+        [Fact]
+        public void ComplexTypes()
+        {
+            string originalSourceCode = @"
+using System;
+using System.Collections.Generic;
+
+class C
+{
+    public static void G()
+    {       
+        var <N:0>a</N:0> = new { key = ""a"", value = new List<(int, int)>()};
+        var <N:1>b</N:1> = (number: 5, value: a);
+        var <N:2>c</N:2> = new[] { b };
+        IntPtr[] <N:3>d</N:3> = new IntPtr[1];
+        int[] <N:4>array</N:4> = { 1, 2, 3 };
+        ref int <N:5>e</N:5> = ref array[0];
+        System.Console.WriteLine(0);
+    }
+}
+";
+            var source0 = MarkedSource(originalSourceCode);
+            var source2 = MarkedSource(originalSourceCode);
+
+            var source1 = MarkedSource(@"
+using System;
+using System.Collections.Generic;
+
+class C
+{
+    public static void G()
+    {        
+        var <N:0>a</N:0> = new { key = ""a"", value = new List<(int, int)>()};
+        var <N:1>b</N:1> = (number: 5, value: a);
+        var <N:2>c</N:2> = new[] { b };
+        IntPtr[] <N:3>d</N:3> = new IntPtr[1];
+        int[] <N:4>array</N:4> = { 1, 2, 3 };
+        ref int <N:5>e</N:5> = ref array[0];
+        System.Console.WriteLine(1);
+    }
+}
+");
+
+            var compilation0 = CreateStandardCompilation(source0.Tree, options: ComSafeDebugDll, references: s_valueTupleRefs);
+            var compilation1 = compilation0.WithSource(source1.Tree);
+            var compilation2 = compilation1.WithSource(source2.Tree);
+
+            var f0 = compilation0.GetMember<MethodSymbol>("C.G");
+            var f1 = compilation1.GetMember<MethodSymbol>("C.G");
+            var f2 = compilation2.GetMember<MethodSymbol>("C.G");
+
+            var v0 = CompileAndVerify(compilation0);
+            v0.VerifyIL("C.G", @"
+{
+  // Code size       85 (0x55)
+  .maxstack  4
+  .locals init (<>f__AnonymousType0<string, System.Collections.Generic.List<(int, int)>> V_0, //a
+                System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>> V_1, //b
+                (int number, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value> value)[] V_2, //c
+                System.IntPtr[] V_3, //d
+                int[] V_4, //array
+                int& V_5) //e
+  IL_0000:  nop
+  IL_0001:  ldstr      ""a""
+  IL_0006:  newobj     ""System.Collections.Generic.List<(int, int)>..ctor()""
+  IL_000b:  newobj     ""<>f__AnonymousType0<string, System.Collections.Generic.List<(int, int)>>..ctor(string, System.Collections.Generic.List<(int, int)>)""
+  IL_0010:  stloc.0
+  IL_0011:  ldloca.s   V_1
+  IL_0013:  ldc.i4.5
+  IL_0014:  ldloc.0
+  IL_0015:  call       ""System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>>..ctor(int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>)""
+  IL_001a:  ldc.i4.1
+  IL_001b:  newarr     ""System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>>""
+  IL_0020:  dup
+  IL_0021:  ldc.i4.0
+  IL_0022:  ldloc.1
+  IL_0023:  stelem     ""System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>>""
+  IL_0028:  stloc.2
+  IL_0029:  ldc.i4.1
+  IL_002a:  newarr     ""System.IntPtr""
+  IL_002f:  stloc.3
+  IL_0030:  ldc.i4.3
+  IL_0031:  newarr     ""int""
+  IL_0036:  dup
+  IL_0037:  ldtoken    ""<PrivateImplementationDetails>.__StaticArrayInitTypeSize=12 <PrivateImplementationDetails>.E429CCA3F703A39CC5954A6572FEC9086135B34E""
+  IL_003c:  call       ""void System.Runtime.CompilerServices.RuntimeHelpers.InitializeArray(System.Array, System.RuntimeFieldHandle)""
+  IL_0041:  stloc.s    V_4
+  IL_0043:  ldloc.s    V_4
+  IL_0045:  ldc.i4.0
+  IL_0046:  ldelema    ""int""
+  IL_004b:  stloc.s    V_5
+  IL_004d:  ldc.i4.0
+  IL_004e:  call       ""void System.Console.WriteLine(int)""
+  IL_0053:  nop
+  IL_0054:  ret
+}
+");
+
+            var md0 = ModuleMetadata.CreateFromImage(v0.EmittedAssemblyData);
+
+            var generation0 = EmitBaseline.CreateInitialBaseline(md0, v0.CreateSymReader().GetEncMethodDebugInfo);
+            var diff1 = compilation1.EmitDifference(
+                generation0,
+                ImmutableArray.Create(
+                    new SemanticEdit(SemanticEditKind.Update, f0, f1, GetSyntaxMapFromMarkers(source0, source1), preserveLocalVariables: true)));
+
+            diff1.VerifyIL("C.G", @"
+{
+  // Code size       86 (0x56)
+  .maxstack  4
+  .locals init (<>f__AnonymousType0<string, System.Collections.Generic.List<(int, int)>> V_0, //a
+                System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>> V_1, //b
+                (int number, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value> value)[] V_2, //c
+                System.IntPtr[] V_3, //d
+                int[] V_4, //array
+                int& V_5) //e
+  IL_0000:  nop
+  IL_0001:  ldstr      ""a""
+  IL_0006:  newobj     ""System.Collections.Generic.List<(int, int)>..ctor()""
+  IL_000b:  newobj     ""<>f__AnonymousType0<string, System.Collections.Generic.List<(int, int)>>..ctor(string, System.Collections.Generic.List<(int, int)>)""
+  IL_0010:  stloc.0
+  IL_0011:  ldloca.s   V_1
+  IL_0013:  ldc.i4.5
+  IL_0014:  ldloc.0
+  IL_0015:  call       ""System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>>..ctor(int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>)""
+  IL_001a:  ldc.i4.1
+  IL_001b:  newarr     ""System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>>""
+  IL_0020:  dup
+  IL_0021:  ldc.i4.0
+  IL_0022:  ldloc.1
+  IL_0023:  stelem     ""System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>>""
+  IL_0028:  stloc.2
+  IL_0029:  ldc.i4.1
+  IL_002a:  newarr     ""System.IntPtr""
+  IL_002f:  stloc.3
+  IL_0030:  ldc.i4.3
+  IL_0031:  newarr     ""int""
+  IL_0036:  dup
+  IL_0037:  ldc.i4.0
+  IL_0038:  ldc.i4.1
+  IL_0039:  stelem.i4
+  IL_003a:  dup
+  IL_003b:  ldc.i4.1
+  IL_003c:  ldc.i4.2
+  IL_003d:  stelem.i4
+  IL_003e:  dup
+  IL_003f:  ldc.i4.2
+  IL_0040:  ldc.i4.3
+  IL_0041:  stelem.i4
+  IL_0042:  stloc.s    V_4
+  IL_0044:  ldloc.s    V_4
+  IL_0046:  ldc.i4.0
+  IL_0047:  ldelema    ""int""
+  IL_004c:  stloc.s    V_5
+  IL_004e:  ldc.i4.1
+  IL_004f:  call       ""void System.Console.WriteLine(int)""
+  IL_0054:  nop
+  IL_0055:  ret
+}
+");
+
+            var diff2 = compilation2.EmitDifference(
+               diff1.NextGeneration,
+               ImmutableArray.Create(
+                   new SemanticEdit(SemanticEditKind.Update, f1, f2, GetSyntaxMapFromMarkers(source1, source2), preserveLocalVariables: true)));
+
+            diff2.VerifyIL("C.G", @"
+{
+  // Code size       86 (0x56)
+  .maxstack  4
+  .locals init (<>f__AnonymousType0<string, System.Collections.Generic.List<(int, int)>> V_0, //a
+                System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>> V_1, //b
+                (int number, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value> value)[] V_2, //c
+                System.IntPtr[] V_3, //d
+                int[] V_4, //array
+                int& V_5) //e
+  IL_0000:  nop
+  IL_0001:  ldstr      ""a""
+  IL_0006:  newobj     ""System.Collections.Generic.List<(int, int)>..ctor()""
+  IL_000b:  newobj     ""<>f__AnonymousType0<string, System.Collections.Generic.List<(int, int)>>..ctor(string, System.Collections.Generic.List<(int, int)>)""
+  IL_0010:  stloc.0
+  IL_0011:  ldloca.s   V_1
+  IL_0013:  ldc.i4.5
+  IL_0014:  ldloc.0
+  IL_0015:  call       ""System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>>..ctor(int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>)""
+  IL_001a:  ldc.i4.1
+  IL_001b:  newarr     ""System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>>""
+  IL_0020:  dup
+  IL_0021:  ldc.i4.0
+  IL_0022:  ldloc.1
+  IL_0023:  stelem     ""System.ValueTuple<int, <anonymous type: string key, System.Collections.Generic.List<(int, int)> value>>""
+  IL_0028:  stloc.2
+  IL_0029:  ldc.i4.1
+  IL_002a:  newarr     ""System.IntPtr""
+  IL_002f:  stloc.3
+  IL_0030:  ldc.i4.3
+  IL_0031:  newarr     ""int""
+  IL_0036:  dup
+  IL_0037:  ldc.i4.0
+  IL_0038:  ldc.i4.1
+  IL_0039:  stelem.i4
+  IL_003a:  dup
+  IL_003b:  ldc.i4.1
+  IL_003c:  ldc.i4.2
+  IL_003d:  stelem.i4
+  IL_003e:  dup
+  IL_003f:  ldc.i4.2
+  IL_0040:  ldc.i4.3
+  IL_0041:  stelem.i4
+  IL_0042:  stloc.s    V_4
+  IL_0044:  ldloc.s    V_4
+  IL_0046:  ldc.i4.0
+  IL_0047:  ldelema    ""int""
+  IL_004c:  stloc.s    V_5
+  IL_004e:  ldc.i4.0
+  IL_004f:  call       ""void System.Console.WriteLine(int)""
+  IL_0054:  nop
+  IL_0055:  ret
+}
+");
+        }
     }
 }
