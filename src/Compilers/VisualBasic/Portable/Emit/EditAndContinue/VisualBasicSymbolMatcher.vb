@@ -402,7 +402,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Emit
                         Return Nothing
                     End If
 
-                    Return TupleTypeSymbol.Create(otherDef, type.TupleElementNames)
+                    Return otherDef
                 End If
 
                 Debug.Assert(type.IsDefinition)
@@ -692,6 +692,11 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Emit
             End Function
 
             Public Overrides Function VisitNamedType(type As NamedTypeSymbol) As Symbol
+                If (type.IsTupleType) Then
+                    type = type.TupleUnderlyingType
+                    Debug.Assert(Not type.IsTupleType)
+                End If
+
                 Dim originalDef As NamedTypeSymbol = type.OriginalDefinition
                 If originalDef IsNot type Then
                     Dim translatedTypeArguments = type.GetAllTypeArgumentsWithModifiers().SelectAsArray(Function(t, v) New TypeWithModifiers(DirectCast(v.Visit(t.Type), TypeSymbol),
