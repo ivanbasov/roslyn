@@ -652,10 +652,10 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Emit
                 End Sub
 
                 Public Overloads Function Equals(source As TypeSymbol, other As TypeSymbol) As Boolean
-                    Dim visitedSource = _matcher.Visit(source)
-                    Dim visitedOther = If(_deepTranslatorOpt IsNot Nothing, _deepTranslatorOpt.Visit(other), other)
+                    Dim visitedSource = DirectCast(_matcher.Visit(source), TypeSymbol)
+                    Dim visitedOther = If(_deepTranslatorOpt IsNot Nothing, DirectCast(_deepTranslatorOpt.Visit(other), TypeSymbol), other)
 
-                    Return visitedSource = visitedOther
+                    Return (visitedSource IsNot Nothing) AndAlso (visitedSource.Equals(visitedOther, TypeCompareKind.IgnoreDynamicAndTupleNames))
                 End Function
             End Class
         End Class

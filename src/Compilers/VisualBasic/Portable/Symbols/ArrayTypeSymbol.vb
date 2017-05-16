@@ -317,6 +317,10 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
             Return IsSameType(obj, TypeCompareKind.ConsiderEverything)
         End Function
 
+        Friend Overrides Function Equals(t2 As TypeSymbol, comparison As TypeCompareKind) As Boolean
+            Return Me.Equals(TryCast(t2, ArrayTypeSymbol), comparison)
+        End Function
+
         Friend Function IsSameType(obj As Object, compareKind As TypeCompareKind) As Boolean
             Debug.Assert((compareKind And Not (TypeCompareKind.IgnoreCustomModifiersAndArraySizesAndLowerBounds Or TypeCompareKind.IgnoreTupleNames)) = 0)
 

@@ -302,6 +302,20 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
         End Function
 
         ''' <summary>
+        ''' Determines if this type symbol represent the same type as another, according to the language
+        ''' semantics.
+        ''' </summary>
+        ''' <param name="t2">The other type.</param>
+        ''' <param name="compareKind">
+        ''' What kind of comparison to use? 
+        ''' You can ignore custom modifiers, ignore the distinction between object And dynamic, Or ignore tuple element names differences.
+        ''' </param>
+        ''' <returns>True if the types are equivalent.</returns>
+        Friend Overridable Overloads Function Equals(t2 As TypeSymbol, compareKind As TypeCompareKind) As Boolean
+            Return ReferenceEquals(Me, t2)
+        End Function
+
+        ''' <summary>
         ''' Lookup an immediately nested type referenced from metadata, names should be
         ''' compared case-sensitively.
         ''' </summary>
