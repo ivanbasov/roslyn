@@ -12,8 +12,6 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.UnitTests
     Public Class LocalSlotMappingTests
         Inherits EditAndContinueTestBase
 
-        Protected Shared ReadOnly s_valueTupleRefs As MetadataReference() = {SystemRuntimeFacadeRef, ValueTupleRef}
-
         <Fact>
         Public Sub OutOfOrderUserLocals()
             Dim source = MarkedSource("
@@ -944,7 +942,7 @@ End Class
             Dim source1 = MarkedSource(sourceText)
             Dim source2 = MarkedSource(sourceText)
 
-            Dim compilation0 = CreateCompilationWithMscorlib(source0.Tree, options:=ComSafeDebugDll, references:=s_valueTupleRefs)
+            Dim compilation0 = CreateCompilationWithMscorlib(source0.Tree, options:=ComSafeDebugDll, references:=ValueTupleRefs)
             Dim compilation1 = compilation0.WithSource(source1.Tree)
             Dim compilation2 = compilation1.WithSource(source2.Tree)
 

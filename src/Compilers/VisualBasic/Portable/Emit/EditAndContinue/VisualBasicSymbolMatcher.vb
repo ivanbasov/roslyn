@@ -692,7 +692,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Emit
             End Function
 
             Public Overrides Function VisitNamedType(type As NamedTypeSymbol) As Symbol
-                If (type.IsTupleType) Then
+                If type.IsTupleType Then
                     type = type.TupleUnderlyingType
                     Debug.Assert(Not type.IsTupleType)
                 End If
