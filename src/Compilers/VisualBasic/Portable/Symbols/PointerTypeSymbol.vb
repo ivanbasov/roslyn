@@ -62,6 +62,10 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
             Return other IsNot Nothing AndAlso other._pointedAtType.Equals(_pointedAtType) AndAlso other._customModifiers.SequenceEqual(_customModifiers)
         End Function
 
+        Friend Overrides Function Equals(t2 As TypeSymbol, comparison As TypeCompareKind) As Boolean
+            Return Me.Equals(TryCast(t2, PointerTypeSymbol), comparison)
+        End Function
+
     End Class
 
 End Namespace

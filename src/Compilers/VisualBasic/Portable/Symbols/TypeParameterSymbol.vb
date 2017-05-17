@@ -321,6 +321,34 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
 
         Public MustOverride ReadOnly Property Variance As VarianceKind Implements ITypeParameterSymbol.Variance
 
+        Friend Overrides Function Equals(t2 As TypeSymbol, comparison As TypeCompareKind) As Boolean
+            Return Me.Equals(TryCast(t2, TypeParameterSymbol), comparison)
+        End Function
+
+        Friend Overloads Function Equals(other As TypeParameterSymbol) As Boolean
+            Return Equals(other, TypeCompareKind.ConsiderEverything)
+        End Function
+
+        Private Overloads Function Equals(other As TypeParameterSymbol, comparison As TypeCompareKind) As Boolean
+            If ReferenceEquals(Me, other) Then
+                Return True
+            End If
+
+            If DirectCast(other, Object) Is Nothing OrElse Not ReferenceEquals(other.OriginalDefinition, Me.OriginalDefinition) Then
+                Return False
+            End If
+
+            If DirectCast(Me.ContainingSymbol, Object) Is Nothing Then
+                Return False
+            End If
+
+            Return other.ContainingSymbol.ContainingType.Equals(Me.ContainingSymbol.ContainingType, comparison)
+        End Function
+
+        Public Overrides Function GetHashCode() As Integer
+            Return Hash.Combine(ContainingSymbol, Ordinal)
+        End Function
+
         ''' <summary>
         ''' If this is a type parameter of a reduced extension method, gets the type parameter definition that
         ''' this type parameter was reduced from. Otherwise, returns Nothing.

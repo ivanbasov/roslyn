@@ -2,6 +2,7 @@
 
 Imports System.Collections.Generic
 Imports System.Collections.Immutable
+Imports System.Runtime.CompilerServices
 Imports System.Runtime.InteropServices
 Imports System.Text
 Imports System.Threading
@@ -447,6 +448,108 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
                 Return TypeKind = TypeKind.Enum OrElse TypeKind = TypeKind.Structure
             End Get
         End Property
+
+        Public Overrides Function GetHashCode() As Integer
+            If Me.SpecialType = SpecialType.System_Object Then
+                Return SpecialType.System_Object
+            End If
+
+            Return RuntimeHelpers.GetHashCode(OriginalDefinition)
+        End Function
+
+        ''' <summary>
+        ''' Compares this type to another type.
+        ''' </summary>
+        Friend Overrides Function Equals(t2 As TypeSymbol, comparison As TypeCompareKind) As Boolean
+            Debug.Assert(Not Me.IsTupleType)
+            If DirectCast(t2, Object) Is Me Then
+                Return True
+            End If
+
+            If DirectCast(t2, Object) Is Nothing Then
+                Return False
+            End If
+
+            If (comparison And TypeCompareKind.IgnoreDynamic) <> 0 Then
+                If t2.TypeKind = TypeKind.Dynamic Then
+                    If Me.SpecialType = SpecialType.System_Object Then
+                        Return True
+                    End If
+                End If
+            End If
+
+            If (comparison And TypeCompareKind.IgnoreTupleNames) <> 0 Then
+                If t2.IsTupleType Then
+                    t2 = t2.TupleUnderlyingType
+                    If Me.Equals(t2, comparison) Then
+                        Return True
+                    End If
+                End If
+            End If
+
+            Dim other As NamedTypeSymbol = TryCast(t2, NamedTypeSymbol)
+            If DirectCast(other, Object) Is Nothing Then
+                Return False
+            End If
+
+            ' Compare OriginalDefinitions.
+            Dim thisOriginalDefinition = Me.OriginalDefinition
+            Dim otherOriginalDefinition = other.OriginalDefinition
+            If (DirectCast(Me, Object) Is DirectCast(thisOriginalDefinition, Object) OrElse DirectCast(other, Object) Is DirectCast(otherOriginalDefinition, Object)) AndAlso Not ((comparison And TypeCompareKind.IgnoreCustomModifiersAndArraySizesAndLowerBounds) <> 0 AndAlso (Me.HasTypeArgumentsCustomModifiers OrElse other.HasTypeArgumentsCustomModifiers)) Then
+                Return False
+            End If
+
+            If thisOriginalDefinition <> otherOriginalDefinition Then
+                Return False
+            End If
+
+            Return EqualsComplicatedCases(other, comparison)
+        End Function
+
+        ''' <summary>
+        ''' Helper for more complicated cases of Equals like when we have generic instantiations or types nested within them.
+        ''' </summary>
+        Private Function EqualsComplicatedCases(other As NamedTypeSymbol, comparison As TypeCompareKind) As Boolean
+            If DirectCast(Me.ContainingType, Object) IsNot Nothing AndAlso Not Me.ContainingType.Equals(other.ContainingType, comparison) Then
+                Return False
+            End If
+
+            Dim thisIsNotConstructed = ReferenceEquals(ConstructedFrom, Me)
+            Dim otherIsNotConstructed = ReferenceEquals(other.ConstructedFrom, other)
+            If thisIsNotConstructed AndAlso otherIsNotConstructed Then
+                Return True
+            End If
+
+            If ((thisIsNotConstructed OrElse otherIsNotConstructed) AndAlso Not ((comparison And TypeCompareKind.IgnoreCustomModifiersAndArraySizesAndLowerBounds) <> 0 AndAlso (Me.HasTypeArgumentsCustomModifiers OrElse other.HasTypeArgumentsCustomModifiers))) OrElse Me.IsUnboundGenericType <> other.IsUnboundGenericType Then
+                Return False
+            End If
+
+            Dim hasTypeArgumentsCustomModifiers As Boolean = Me.HasTypeArgumentsCustomModifiers
+            If (comparison And TypeCompareKind.IgnoreCustomModifiersAndArraySizesAndLowerBounds) = 0 AndAlso hasTypeArgumentsCustomModifiers <> other.HasTypeArgumentsCustomModifiers Then
+                Return False
+            End If
+
+            Dim typeArguments = Me.TypeArgumentsNoUseSiteDiagnostics
+            Dim otherTypeArguments = other.TypeArgumentsNoUseSiteDiagnostics
+            Dim count As Integer = typeArguments.Length
+            Debug.Assert(count = otherTypeArguments.Length)
+            For i = 0 To count - 1
+                If Not typeArguments(i).Equals(otherTypeArguments(i), comparison) Then
+                    Return False
+                End If
+            Next
+
+            If (comparison And TypeCompareKind.IgnoreCustomModifiersAndArraySizesAndLowerBounds) = 0 AndAlso hasTypeArgumentsCustomModifiers Then
+                Debug.Assert(other.HasTypeArgumentsCustomModifiers)
+                For i = 0 To count - 1
+                    If Not Me.GetTypeArgumentCustomModifiers(i).SequenceEqual(other.GetTypeArgumentCustomModifiers(i)) Then
+                        Return False
+                    End If
+                Next
+            End If
+
+            Return True
+        End Function
 
         ''' <summary>
         ''' Returns True if this types has Arity >= 1 and Construct can be called. This is primarily useful
