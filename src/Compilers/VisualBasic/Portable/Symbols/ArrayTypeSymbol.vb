@@ -321,6 +321,37 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
             Return Me.Equals(TryCast(t2, ArrayTypeSymbol), comparison)
         End Function
 
+        Private Overloads Function Equals(other As ArrayTypeSymbol, comparison As TypeCompareKind) As Boolean
+            If ReferenceEquals(Me, other) Then
+                Return True
+            End If
+
+            If DirectCast(other, Object) Is Nothing OrElse Not other.HasSameShapeAs(Me) OrElse Not other.ElementType.Equals(ElementType, comparison) Then
+                Return False
+            End If
+
+            If (comparison And TypeCompareKind.IgnoreCustomModifiersAndArraySizesAndLowerBounds) = 0 Then
+                Dim [mod] = Me.CustomModifiers
+                Dim otherMod = other.CustomModifiers
+                Dim count = [mod].Length
+                If count <> otherMod.Length Then
+                    Return False
+                End If
+
+                For i = 0 To count - 1
+                    If Not [mod](i).Equals(otherMod(i)) Then
+                        Return False
+                    End If
+                Next
+
+                If Not Me.HasSameSizesAndLowerBoundsAs(other) Then
+                    Return False
+                End If
+            End If
+
+            Return True
+        End Function
+
         Friend Function IsSameType(obj As Object, compareKind As TypeCompareKind) As Boolean
             Debug.Assert((compareKind And Not (TypeCompareKind.IgnoreCustomModifiersAndArraySizesAndLowerBounds Or TypeCompareKind.IgnoreTupleNames)) = 0)
 

@@ -655,7 +655,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Emit
                     Dim visitedSource = DirectCast(_matcher.Visit(source), TypeSymbol)
                     Dim visitedOther = If(_deepTranslatorOpt IsNot Nothing, DirectCast(_deepTranslatorOpt.Visit(other), TypeSymbol), other)
 
-                    Return (visitedSource IsNot Nothing) AndAlso (visitedSource.Equals(visitedOther, TypeCompareKind.IgnoreDynamicAndTupleNames))
+                    Return visitedSource IsNot Nothing AndAlso visitedSource.Equals(visitedOther, TypeCompareKind.IgnoreDynamicAndTupleNames)
                 End Function
             End Class
         End Class
