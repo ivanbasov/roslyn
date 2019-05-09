@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis.Completion;
+using Microsoft.CodeAnalysis.Internal.Log;
 using Microsoft.CodeAnalysis.Shared.Extensions;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Text.Shared.Extensions;
@@ -31,7 +32,7 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
         private readonly RecentItemsManager _recentItemsManager;
 
         internal ItemManager(RecentItemsManager recentItemsManager)
-        { 
+        {
             // Let us make the completion Helper used for non-Roslyn items case-sensitive.
             // We can change this if get requests from partner teams.
             _defaultCompletionHelper = new CompletionHelper(isCaseSensitive: true);
@@ -42,13 +43,34 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             IAsyncCompletionSession session,
             AsyncCompletionSessionInitialDataSnapshot data,
             CancellationToken cancellationToken)
-            => Task.FromResult(data.InitialList.OrderBy(i => i.SortText).ToImmutableArray());
+        {
+            int id;
+            session.Properties.TryGetProperty("SessionCounter", out id);
+            using (Logger.LogBlock(FunctionId.AsyncCompletion_Sort, $"Reason {data.Trigger.Reason}, Char {data.Trigger.Character}, Session {id}", cancellationToken))
+            {
+                if (!session.Properties.TryGetProperty(CompletionSource.TriggerSnapshot, out ITextSnapshot snapshotForDocument))
+                {
+                    snapshotForDocument = data.Snapshot;
+                }
+
+                var document = snapshotForDocument.TextBuffer.AsTextContainer().GetOpenDocumentInCurrentContext();
+                Helpers.MakeDelay(document, CompletionOptions.Delay_Sort);
+                return Task.FromResult(data.InitialList.OrderBy(i => i.SortText).ToImmutableArray());
+            }
+        }
 
         public Task<FilteredCompletionModel> UpdateCompletionListAsync(
             IAsyncCompletionSession session,
             AsyncCompletionSessionDataSnapshot data,
             CancellationToken cancellationToken)
-            => Task.FromResult(UpdateCompletionList(session, data, cancellationToken));
+        {
+            int id;
+            session.Properties.TryGetProperty("SessionCounter", out id);
+            using (Logger.LogBlock(FunctionId.AsyncCompletion_Update, $"Reason {data.Trigger.Reason}, Char {data.Trigger.Character}, Session {id}", cancellationToken))
+            {
+                return Task.FromResult(UpdateCompletionList(session, data, cancellationToken));
+            }
+        }
 
         private FilteredCompletionModel UpdateCompletionList(
             IAsyncCompletionSession session,
@@ -105,6 +127,8 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             }
 
             var document = snapshotForDocument.TextBuffer.AsTextContainer().GetOpenDocumentInCurrentContext();
+            Helpers.MakeDelay(document, CompletionOptions.Delay_Update);
+
             var completionService = document?.GetLanguageService<CompletionService>();
             var completionRules = completionService?.GetRules() ?? CompletionRules.Default;
             var completionHelper = document != null ? CompletionHelper.GetHelper(document) : _defaultCompletionHelper;

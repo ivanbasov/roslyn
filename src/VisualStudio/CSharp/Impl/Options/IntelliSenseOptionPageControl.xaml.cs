@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 using System.Windows;
+using ICSharpCode.Decompiler.IL;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Completion;
 using Microsoft.VisualStudio.LanguageServices.Implementation.Options;
@@ -30,6 +31,13 @@ namespace Microsoft.VisualStudio.LanguageServices.CSharp.Options
             BindToOption(Always_add_new_line_on_enter, CompletionOptions.EnterKeyBehavior, EnterKeyRule.Always, LanguageNames.CSharp);
 
             BindToOption(Show_name_suggestions, CompletionOptions.ShowNameSuggestions, LanguageNames.CSharp);
+
+            BindToOption(Delay_InitializeCompletion, CompletionOptions.Delay_InitializeCompletion, LanguageNames.CSharp);
+            BindToOption(Delay_GetCompletionContext, CompletionOptions.Delay_GetCompletionContext, LanguageNames.CSharp);
+            BindToOption(Delay_Sort, CompletionOptions.Delay_Sort, LanguageNames.CSharp);
+            BindToOption(Delay_Update, CompletionOptions.Delay_Update, LanguageNames.CSharp);
+            BindToOption(Delay_ShouldCommitCompletion, CompletionOptions.Delay_ShouldCommitCompletion, LanguageNames.CSharp);
+            BindToOption(Delay_TryCommit, CompletionOptions.Delay_TryCommit, LanguageNames.CSharp);
         }
 
         private void Show_completion_list_after_a_character_is_typed_Checked(object sender, RoutedEventArgs e)

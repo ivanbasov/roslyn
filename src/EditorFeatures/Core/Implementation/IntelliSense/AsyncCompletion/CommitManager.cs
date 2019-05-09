@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.Editor.Shared.Extensions;
 using Microsoft.CodeAnalysis.Editor.Shared.Utilities;
 using Microsoft.CodeAnalysis.ErrorReporting;
+using Microsoft.CodeAnalysis.Internal.Log;
 using Microsoft.CodeAnalysis.Shared.Extensions;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Text.Shared.Extensions;
@@ -68,13 +69,24 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             char typedChar,
             CancellationToken cancellationToken)
         {
-            if (!PotentialCommitCharacters.Contains(typedChar))
+            int id;
+            session.Properties.TryGetProperty("SessionCounter", out id);
+            using (Logger.LogBlock(FunctionId.AsyncCompletion_ShouldCommitCompletion, $"Char {typedChar}, Session {id}", cancellationToken))
             {
-                return false;
-            }
+                if (session.Properties.TryGetProperty(CompletionSource.TriggerSnapshot, out ITextSnapshot snapshotForDocument))
+                {
+                    var document = snapshotForDocument.TextBuffer.AsTextContainer().GetOpenDocumentInCurrentContext();
+                    Helpers.MakeDelay(document, CompletionOptions.Delay_ShouldCommitCompletion);
+                }
 
-            return !(session.Properties.TryGetProperty(CompletionSource.ExcludedCommitCharacters, out ImmutableArray<char> excludedCommitCharacter)
-                && excludedCommitCharacter.Contains(typedChar));
+                if (!PotentialCommitCharacters.Contains(typedChar))
+                {
+                    return false;
+                }
+
+                return !(session.Properties.TryGetProperty(CompletionSource.ExcludedCommitCharacters, out ImmutableArray<char> excludedCommitCharacter)
+                    && excludedCommitCharacter.Contains(typedChar));
+            }
         }
 
         public AsyncCompletionData.CommitResult TryCommit(
@@ -84,69 +96,75 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             char typeChar,
             CancellationToken cancellationToken)
         {
-            // We can make changes to buffers. We would like to be sure nobody can change them at the same time.
-            AssertIsForeground();
-
-            var document = subjectBuffer.CurrentSnapshot.GetOpenDocumentInCurrentContextWithChanges();
-            if (document == null)
+            int id;
+            session.Properties.TryGetProperty("SessionCounter", out id);
+            using (Logger.LogBlock(FunctionId.AsyncCompletion_TryCommit, $"Char {typeChar}, Item {item.DisplayText} Session {id}", cancellationToken))
             {
-                return CommitResultUnhandled;
+                // We can make changes to buffers. We would like to be sure nobody can change them at the same time.
+                AssertIsForeground();
+
+                var document = subjectBuffer.CurrentSnapshot.GetOpenDocumentInCurrentContextWithChanges();
+                Helpers.MakeDelay(document, CompletionOptions.Delay_TryCommit);
+                if (document == null)
+                {
+                    return CommitResultUnhandled;
+                }
+
+                var completionService = document.GetLanguageService<CompletionService>();
+                if (completionService == null)
+                {
+                    return CommitResultUnhandled;
+                }
+
+                if (!item.Properties.TryGetProperty(CompletionSource.RoslynItem, out RoslynCompletionItem roslynItem))
+                {
+                    // Roslyn should not be called if the item committing was not provided by Roslyn.
+                    return CommitResultUnhandled;
+                }
+
+                var filterText = session.ApplicableToSpan.GetText(session.ApplicableToSpan.TextBuffer.CurrentSnapshot) + typeChar;
+                if (Helpers.IsFilterCharacter(roslynItem, typeChar, filterText))
+                {
+                    // Returning Cancel means we keep the current session and consider the character for further filtering.
+                    return new AsyncCompletionData.CommitResult(isHandled: true, AsyncCompletionData.CommitBehavior.CancelCommit);
+                }
+
+                var serviceRules = completionService.GetRules();
+
+                // We can be called before for ShouldCommitCompletion. However, that call does not provide rules applied for the completion item.
+                // Now we check for the commit charcter in the context of Rules that could change the list of commit characters.
+
+                // Tab, Enter and Null (call invoke commit) are always commit characters. 
+                if (typeChar != '\t' && typeChar != '\n' && typeChar != '\0' && !IsCommitCharacter(serviceRules, roslynItem, typeChar, filterText))
+                {
+                    // Returning None means we complete the current session with a void commit. 
+                    // The Editor then will try to trigger a new completion session for the character.
+                    return new AsyncCompletionData.CommitResult(isHandled: true, AsyncCompletionData.CommitBehavior.None);
+                }
+
+                if (!session.Properties.TryGetProperty(CompletionSource.TriggerSnapshot, out ITextSnapshot triggerSnapshot))
+                {
+                    // Need the trigger snapshot to calculate the span when the commit changes to be applied.
+                    // It should be inserted into a property bag within GetCompletionContextAsync for each item created by Roslyn.
+                    // If not found here, Roslyn should not make a commit.
+                    return CommitResultUnhandled;
+                }
+
+                var triggerDocument = triggerSnapshot.GetOpenDocumentInCurrentContextWithChanges();
+                if (triggerDocument == null)
+                {
+                    return CommitResultUnhandled;
+                }
+
+                // Commit with completion service assumes that null is provided is case of invoke. VS provides '\0' in the case.
+                char? commitChar = typeChar == '\0' ? null : (char?)typeChar;
+                var commitBehavior = Commit(
+                    triggerDocument, completionService, session.TextView, subjectBuffer,
+                    roslynItem, commitChar, triggerSnapshot, serviceRules, filterText, cancellationToken);
+
+                _recentItemsManager.MakeMostRecentItem(roslynItem.DisplayText);
+                return new AsyncCompletionData.CommitResult(isHandled: true, commitBehavior);
             }
-
-            var completionService = document.GetLanguageService<CompletionService>();
-            if (completionService == null)
-            {
-                return CommitResultUnhandled;
-            }
-
-            if (!item.Properties.TryGetProperty(CompletionSource.RoslynItem, out RoslynCompletionItem roslynItem))
-            {
-                // Roslyn should not be called if the item committing was not provided by Roslyn.
-                return CommitResultUnhandled;
-            }
-
-            var filterText = session.ApplicableToSpan.GetText(session.ApplicableToSpan.TextBuffer.CurrentSnapshot) + typeChar;
-            if (Helpers.IsFilterCharacter(roslynItem, typeChar, filterText))
-            {
-                // Returning Cancel means we keep the current session and consider the character for further filtering.
-                return new AsyncCompletionData.CommitResult(isHandled: true, AsyncCompletionData.CommitBehavior.CancelCommit);
-            }
-
-            var serviceRules = completionService.GetRules();
-
-            // We can be called before for ShouldCommitCompletion. However, that call does not provide rules applied for the completion item.
-            // Now we check for the commit charcter in the context of Rules that could change the list of commit characters.
-
-            // Tab, Enter and Null (call invoke commit) are always commit characters. 
-            if (typeChar != '\t' && typeChar != '\n' && typeChar != '\0' && !IsCommitCharacter(serviceRules, roslynItem, typeChar, filterText))
-            {
-                // Returning None means we complete the current session with a void commit. 
-                // The Editor then will try to trigger a new completion session for the character.
-                return new AsyncCompletionData.CommitResult(isHandled: true, AsyncCompletionData.CommitBehavior.None);
-            }
-
-            if (!session.Properties.TryGetProperty(CompletionSource.TriggerSnapshot, out ITextSnapshot triggerSnapshot))
-            {
-                // Need the trigger snapshot to calculate the span when the commit changes to be applied.
-                // It should be inserted into a property bag within GetCompletionContextAsync for each item created by Roslyn.
-                // If not found here, Roslyn should not make a commit.
-                return CommitResultUnhandled;
-            }
-
-            var triggerDocument = triggerSnapshot.GetOpenDocumentInCurrentContextWithChanges();
-            if (triggerDocument == null)
-            {
-                return CommitResultUnhandled;
-            }
-
-            // Commit with completion service assumes that null is provided is case of invoke. VS provides '\0' in the case.
-            char? commitChar = typeChar == '\0' ? null : (char?)typeChar;
-            var commitBehavior = Commit(
-                triggerDocument, completionService, session.TextView, subjectBuffer,
-                roslynItem, commitChar, triggerSnapshot, serviceRules, filterText, cancellationToken);
-
-            _recentItemsManager.MakeMostRecentItem(roslynItem.DisplayText);
-            return new AsyncCompletionData.CommitResult(isHandled: true, commitBehavior);
         }
 
         private AsyncCompletionData.CommitBehavior Commit(
@@ -181,7 +199,7 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             var textChange = change.TextChange;
             var triggerSnapshotSpan = new SnapshotSpan(triggerSnapshot, textChange.Span.ToSpan());
             var mappedSpan = triggerSnapshotSpan.TranslateTo(subjectBuffer.CurrentSnapshot, SpanTrackingMode.EdgeInclusive);
-            
+
             var adjustedNewText = AdjustForVirtualSpace(textChange, view, _editorOperationsFactoryService);
 
             using (var edit = subjectBuffer.CreateEdit(EditOptions.DefaultMinimalChange, reiteratedVersionNumber: null, editTag: null))
@@ -191,7 +209,7 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
                 // edit.Apply() may trigger changes made by extensions.
                 // updatedCurrentSnapshot will contain changes made by Roslyn but not by other extensions.
                 var updatedCurrentSnapshot = edit.Apply();
-                
+
                 if (change.NewPosition.HasValue)
                 {
                     // Roslyn knows how to positionate the caret in the snapshot we just created.

@@ -451,5 +451,12 @@ namespace Microsoft.CodeAnalysis.Internal.Log
         GraphQuery_IsCalledBy,
         GraphQuery_IsUsedBy,
         GraphQuery_Overrides,
+
+        AsyncCompletion_Initialize,
+        AsyncCompletion_GetCompletionContext,
+        AsyncCompletion_Sort,
+        AsyncCompletion_Update,
+        AsyncCompletion_ShouldCommitCompletion,
+        AsyncCompletion_TryCommit,
     }
 }

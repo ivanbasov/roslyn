@@ -1,6 +1,8 @@
 ﻿// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
+using System.Threading;
 using Microsoft.CodeAnalysis.Completion;
+using Microsoft.CodeAnalysis.Options;
 using Microsoft.VisualStudio.Text;
 using AsyncCompletionData = Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion.Data;
 using RoslynTrigger = Microsoft.CodeAnalysis.Completion.CompletionTrigger;
@@ -94,6 +96,15 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             }
 
             return false;
+        }
+
+        internal static void MakeDelay(Document document, PerLanguageOption<int> option)
+        {
+            var delay = document?.Project.Solution.Options?.GetOption(option, document.Project.Language);
+            if (delay.HasValue)
+            {
+                Thread.Sleep(delay.Value);
+            }
         }
     }
 }

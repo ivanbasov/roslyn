@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.Completion.Providers;
 using Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.Completion;
 using Microsoft.CodeAnalysis.Editor.Shared.Extensions;
 using Microsoft.CodeAnalysis.Editor.Shared.Utilities;
+using Microsoft.CodeAnalysis.Internal.Log;
 using Microsoft.CodeAnalysis.LanguageServices;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.PooledObjects;
@@ -59,40 +60,45 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             SnapshotPoint triggerLocation,
             CancellationToken cancellationToken)
         {
-            // We take sourceText from document to get a snapshot span.
-            // We would like to be sure that nobody changes buffers at the same time.
-            AssertIsForeground();
-
-            var document = triggerLocation.Snapshot.GetOpenDocumentInCurrentContextWithChanges();
-            if (document == null)
+            using (Logger.LogBlock(FunctionId.AsyncCompletion_Initialize, $"Reason {trigger.Reason}, Char {trigger.Character}", cancellationToken))
             {
-                return AsyncCompletionData.CompletionStartData.DoesNotParticipateInCompletion;
+                // We take sourceText from document to get a snapshot span.
+                // We would like to be sure that nobody changes buffers at the same time.
+                AssertIsForeground();
+
+                var document = triggerLocation.Snapshot.GetOpenDocumentInCurrentContextWithChanges();
+                if (document == null)
+                {
+                    return AsyncCompletionData.CompletionStartData.DoesNotParticipateInCompletion;
+                }
+
+                Helpers.MakeDelay(document, CompletionOptions.Delay_InitializeCompletion);
+
+                var service = document.GetLanguageService<CompletionService>();
+                if (service == null)
+                {
+                    return AsyncCompletionData.CompletionStartData.DoesNotParticipateInCompletion;
+                }
+
+                if (!document.Project.Solution.Workspace.Options.GetOption(CompletionOptions.BlockForCompletionItems, service.Language))
+                {
+                    _textView.Options.GlobalOptions.SetOptionValue(NonBlockingCompletionEditorOption, true);
+                }
+
+                // In case of calls with multiple completion services for the same view (e.g. TypeScript and C#), those completion services must not be called simultaneously for the same session.
+                // Therefore, in each completion session we use a list of commit character for a specific completion service and a specific content type.
+                _textView.Properties[PotentialCommitCharacters] = service.GetRules().DefaultCommitCharacters;
+
+                var sourceText = document.GetTextSynchronously(cancellationToken);
+
+                return ShouldTriggerCompletion(trigger, triggerLocation, sourceText, document, service)
+                    ? new AsyncCompletionData.CompletionStartData(
+                        participation: AsyncCompletionData.CompletionParticipation.ProvidesItems,
+                        applicableToSpan: new SnapshotSpan(
+                            triggerLocation.Snapshot,
+                            service.GetDefaultCompletionListSpan(sourceText, triggerLocation.Position).ToSpan()))
+                    : AsyncCompletionData.CompletionStartData.DoesNotParticipateInCompletion;
             }
-
-            var service = document.GetLanguageService<CompletionService>();
-            if (service == null)
-            {
-                return AsyncCompletionData.CompletionStartData.DoesNotParticipateInCompletion;
-            }
-
-            if (!document.Project.Solution.Workspace.Options.GetOption(CompletionOptions.BlockForCompletionItems, service.Language))
-            {
-                _textView.Options.GlobalOptions.SetOptionValue(NonBlockingCompletionEditorOption, true);
-            }
-
-            // In case of calls with multiple completion services for the same view (e.g. TypeScript and C#), those completion services must not be called simultaneously for the same session.
-            // Therefore, in each completion session we use a list of commit character for a specific completion service and a specific content type.
-            _textView.Properties[PotentialCommitCharacters] = service.GetRules().DefaultCommitCharacters;
-
-            var sourceText = document.GetTextSynchronously(cancellationToken);
-
-            return ShouldTriggerCompletion(trigger, triggerLocation, sourceText, document, service)
-                ? new AsyncCompletionData.CompletionStartData(
-                    participation: AsyncCompletionData.CompletionParticipation.ProvidesItems,
-                    applicableToSpan: new SnapshotSpan(
-                        triggerLocation.Snapshot,
-                        service.GetDefaultCompletionListSpan(sourceText, triggerLocation.Position).ToSpan()))
-                : AsyncCompletionData.CompletionStartData.DoesNotParticipateInCompletion;
         }
 
         private bool ShouldTriggerCompletion(
@@ -164,73 +170,80 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             SnapshotSpan applicableToSpan,
             CancellationToken cancellationToken)
         {
-            var document = triggerLocation.Snapshot.GetOpenDocumentInCurrentContextWithChanges();
-            if (document == null)
+            int id;
+            session.Properties.TryGetProperty("SessionCounter", out id);
+            using (Logger.LogBlock(FunctionId.AsyncCompletion_GetCompletionContext, $"Reason {trigger.Reason}, Char {trigger.Character}, Session {id}", cancellationToken))
             {
-                return new AsyncCompletionData.CompletionContext(ImmutableArray<VSCompletionItem>.Empty);
+                var document = triggerLocation.Snapshot.GetOpenDocumentInCurrentContextWithChanges();
+                if (document == null)
+                {
+                    return new AsyncCompletionData.CompletionContext(ImmutableArray<VSCompletionItem>.Empty);
+                }
+
+                Helpers.MakeDelay(document, CompletionOptions.Delay_GetCompletionContext);
+
+                var completionService = document.GetLanguageService<CompletionService>();
+
+                var roslynTrigger = Helpers.GetRoslynTrigger(trigger, triggerLocation);
+
+                var workspace = document.Project.Solution.Workspace;
+
+                var completionList = await completionService.GetCompletionsAsync(
+                    document,
+                    triggerLocation,
+                    roslynTrigger,
+                    _roles,
+                    _isDebuggerTextView ? workspace.Options.WithDebuggerCompletionOptions() : workspace.Options,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (completionList == null)
+                {
+                    return new AsyncCompletionData.CompletionContext(ImmutableArray<VSCompletionItem>.Empty);
+                }
+
+                var filterCache = new Dictionary<string, AsyncCompletionData.CompletionFilter>();
+
+                var itemsBuilder = new ArrayBuilder<VSCompletionItem>(completionList.Items.Length);
+                foreach (var roslynItem in completionList.Items)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var item = Convert(document, roslynItem, completionService, filterCache);
+                    itemsBuilder.Add(item);
+                }
+
+                var items = itemsBuilder.ToImmutableAndFree();
+
+                var suggestionItemOptions = completionList.SuggestionModeItem != null
+                        ? new AsyncCompletionData.SuggestionItemOptions(
+                            completionList.SuggestionModeItem.DisplayText,
+                            completionList.SuggestionModeItem.Properties.TryGetValue(Description, out var description)
+                                ? description
+                                : string.Empty)
+                        : null;
+
+                // Have to store the snapshot to reuse it in some projections related scenarios
+                // where data and session in further calls are able to provide other snapshots.
+                session.Properties.AddProperty(TriggerSnapshot, triggerLocation.Snapshot);
+
+                // This is a code supporting original completion scenarios: 
+                // Controller.Session_ComputeModel: if completionList.SuggestionModeItem != null, then suggestionMode = true
+                // If there are suggestionItemOptions, then later HandleNormalFiltering should set selection to SoftSelection.
+                session.Properties.AddProperty(HasSuggestionItemOptions, suggestionItemOptions != null);
+
+                session.Properties.AddProperty(InitialTriggerKind, roslynTrigger.Kind);
+                var excludedCommitCharacters = GetExcludedCommitCharacters(completionList.Items);
+                if (excludedCommitCharacters.Length > 0)
+                {
+                    session.Properties.AddProperty(ExcludedCommitCharacters, excludedCommitCharacters);
+                }
+
+                return new AsyncCompletionData.CompletionContext(
+                    items,
+                    suggestionItemOptions,
+                    suggestionItemOptions == null
+                        ? AsyncCompletionData.InitialSelectionHint.RegularSelection
+                        : AsyncCompletionData.InitialSelectionHint.SoftSelection);
             }
-
-            var completionService = document.GetLanguageService<CompletionService>();
-
-            var roslynTrigger = Helpers.GetRoslynTrigger(trigger, triggerLocation);
-
-            var workspace = document.Project.Solution.Workspace;
-
-            var completionList = await completionService.GetCompletionsAsync(
-                document,
-                triggerLocation,
-                roslynTrigger,
-                _roles,
-                _isDebuggerTextView ? workspace.Options.WithDebuggerCompletionOptions() : workspace.Options,
-                cancellationToken).ConfigureAwait(false);
-
-            if (completionList == null)
-            {
-                return new AsyncCompletionData.CompletionContext(ImmutableArray<VSCompletionItem>.Empty);
-            }
-
-            var filterCache = new Dictionary<string, AsyncCompletionData.CompletionFilter>();
-
-            var itemsBuilder = new ArrayBuilder<VSCompletionItem>(completionList.Items.Length);
-            foreach (var roslynItem in completionList.Items)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var item = Convert(document, roslynItem, completionService, filterCache);
-                itemsBuilder.Add(item);
-            }
-
-            var items = itemsBuilder.ToImmutableAndFree();
-
-            var suggestionItemOptions = completionList.SuggestionModeItem != null
-                    ? new AsyncCompletionData.SuggestionItemOptions(
-                        completionList.SuggestionModeItem.DisplayText,
-                        completionList.SuggestionModeItem.Properties.TryGetValue(Description, out var description)
-                            ? description
-                            : string.Empty)
-                    : null;
-
-            // Have to store the snapshot to reuse it in some projections related scenarios
-            // where data and session in further calls are able to provide other snapshots.
-            session.Properties.AddProperty(TriggerSnapshot, triggerLocation.Snapshot);
-
-            // This is a code supporting original completion scenarios: 
-            // Controller.Session_ComputeModel: if completionList.SuggestionModeItem != null, then suggestionMode = true
-            // If there are suggestionItemOptions, then later HandleNormalFiltering should set selection to SoftSelection.
-            session.Properties.AddProperty(HasSuggestionItemOptions, suggestionItemOptions != null);
-
-            session.Properties.AddProperty(InitialTriggerKind, roslynTrigger.Kind);
-            var excludedCommitCharacters = GetExcludedCommitCharacters(completionList.Items);
-            if (excludedCommitCharacters.Length > 0)
-            {
-                session.Properties.AddProperty(ExcludedCommitCharacters, excludedCommitCharacters);
-            }
-
-            return new AsyncCompletionData.CompletionContext(
-                items,
-                suggestionItemOptions,
-                suggestionItemOptions == null
-                    ? AsyncCompletionData.InitialSelectionHint.RegularSelection
-                    : AsyncCompletionData.InitialSelectionHint.SoftSelection);
         }
 
         public async Task<object> GetDescriptionAsync(IAsyncCompletionSession session, VSCompletionItem item, CancellationToken cancellationToken)

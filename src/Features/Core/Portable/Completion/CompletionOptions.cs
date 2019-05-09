@@ -41,6 +41,30 @@ namespace Microsoft.CodeAnalysis.Completion
             new PerLanguageOption<bool>(nameof(CompletionOptions), nameof(ShowNameSuggestions), defaultValue: true,
             storageLocations: new RoamingProfileStorageLocation("TextEditor.%LANGUAGE%.Specific.ShowNameSuggestions"));
 
+        public static readonly PerLanguageOption<int> Delay_InitializeCompletion =
+            new PerLanguageOption<int>(nameof(CompletionOptions), nameof(Delay_InitializeCompletion), defaultValue: 0,
+            storageLocations: new RoamingProfileStorageLocation("TextEditor.%LANGUAGE%.Specific.Delay_InitializeCompletion"));
+
+        public static readonly PerLanguageOption<int> Delay_GetCompletionContext =
+            new PerLanguageOption<int>(nameof(CompletionOptions), nameof(Delay_GetCompletionContext), defaultValue: 0,
+            storageLocations: new RoamingProfileStorageLocation("TextEditor.%LANGUAGE%.Specific.Delay_GetCompletionContext"));
+
+        public static readonly PerLanguageOption<int> Delay_Sort =
+            new PerLanguageOption<int>(nameof(CompletionOptions), nameof(Delay_Sort), defaultValue: 0,
+            storageLocations: new RoamingProfileStorageLocation("TextEditor.%LANGUAGE%.Specific.Delay_Sort"));
+
+        public static readonly PerLanguageOption<int> Delay_Update =
+            new PerLanguageOption<int>(nameof(CompletionOptions), nameof(Delay_Update), defaultValue: 0,
+            storageLocations: new RoamingProfileStorageLocation("TextEditor.%LANGUAGE%.Specific.Delay_Update"));
+
+        public static readonly PerLanguageOption<int> Delay_ShouldCommitCompletion =
+            new PerLanguageOption<int>(nameof(CompletionOptions), nameof(Delay_ShouldCommitCompletion), defaultValue: 0,
+            storageLocations: new RoamingProfileStorageLocation("TextEditor.%LANGUAGE%.Specific.Delay_ShouldCommitCompletion"));
+
+        public static readonly PerLanguageOption<int> Delay_TryCommit =
+            new PerLanguageOption<int>(nameof(CompletionOptions), nameof(Delay_TryCommit), defaultValue: 0,
+            storageLocations: new RoamingProfileStorageLocation("TextEditor.%LANGUAGE%.Specific.Delay_TryCommit"));
+
         public static IEnumerable<PerLanguageOption<bool>> GetDev15CompletionOptions()
         {
             yield return ShowCompletionItemFilters;

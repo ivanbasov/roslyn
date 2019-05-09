@@ -10,7 +10,7 @@
     xmlns:local="clr-namespace:Microsoft.VisualStudio.LanguageServices.CSharp.Options"
     mc:Ignorable="d" d:DesignHeight="350" d:DesignWidth="460">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,0,0,-0.286">
         <StackPanel>
             <GroupBox x:Uid="CompletionListsGroupBox"
                       Header="{x:Static local:IntelliSenseOptionPageStrings.Option_CompletionLists}">
@@ -64,6 +64,22 @@
                     <CheckBox x:Uid="Show_name_suggestions"
                                   x:Name="Show_name_suggestions"
                                   Content="{x:Static local:IntelliSenseOptionPageStrings.Option_Show_name_suggestions}" />
+
+                    <Label Content="Completion delays"/>
+                    <StackPanel>
+                        <Label>Initialize Completion</Label>
+                        <TextBox x:Name="Delay_InitializeCompletion">{x:Static local:IntelliSenseOptionPageStrings.Option_Delay_InitializeCompletion}</TextBox>
+                        <Label>Get Completion Context</Label>
+                        <TextBox x:Name="Delay_GetCompletionContext">{x:Static local:IntelliSenseOptionPageStrings.Option_Delay_GetCompletionContext}</TextBox>
+                        <Label>Sort</Label>
+                        <TextBox x:Name="Delay_Sort">{x:Static local:IntelliSenseOptionPageStrings.Option_Delay_Sort}</TextBox>
+                        <Label>Update</Label>
+                        <TextBox x:Name="Delay_Update">{x:Static local:IntelliSenseOptionPageStrings.Option_Delay_Update}</TextBox>
+                        <Label>Should Commit Completion</Label>
+                        <TextBox x:Name="Delay_ShouldCommitCompletion">{x:Static local:IntelliSenseOptionPageStrings.Option_Delay_ShouldCommitCompletion}</TextBox>
+                        <Label>Try Commit</Label>
+                        <TextBox x:Name="Delay_TryCommit">{x:Static local:IntelliSenseOptionPageStrings.Option_Delay_TryCommit}</TextBox>
+                    </StackPanel>
                 </StackPanel>
             </GroupBox>
         </StackPanel>
