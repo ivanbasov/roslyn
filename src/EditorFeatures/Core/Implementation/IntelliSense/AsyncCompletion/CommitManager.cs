@@ -71,6 +71,30 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             {
                 return false;
             }
+            //if (!PotentialCommitCharacters.Contains(typedChar))
+            //{
+            //    return false;
+            //}
+
+            //var document = location.Snapshot.GetOpenDocumentInCurrentContextWithChanges();
+            //if (document == null)
+            //{
+            //    return true;
+            //}
+
+            //var completionService = document.GetLanguageService<CompletionService>();
+            //if (completionService == null)
+            //{
+            //    return true;
+            //}
+
+            //if (!completionService.GetRules().DefaultCommitCharacters.Contains(typedChar))
+            //{
+            //    return false;
+            //}
+
+            //return !(session.TryGetProperty(completionService, CompletionSource.ExcludedCommitCharacters, out ImmutableArray<char> excludedCommitCharacter)
+            //    && excludedCommitCharacter.Contains(typedChar));
 
             return !(session.Properties.TryGetProperty(CompletionSource.ExcludedCommitCharacters, out ImmutableArray<char> excludedCommitCharacter)
                 && excludedCommitCharacter.Contains(typedChar));
@@ -133,10 +157,12 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             }
 
             if (!session.Properties.TryGetProperty(CompletionSource.CompletionListSpan, out TextSpan completionListSpan))
+            //if (!session.TryGetProperty(completionService, CompletionSource.CompletionListSpan, out TextSpan completionListSpan))
             {
                 return CommitResultUnhandled;
             }
 
+            var triggerSnapshot = session.ApplicableToSpan.TextBuffer.CurrentSnapshot;
             var triggerDocument = triggerSnapshot.GetOpenDocumentInCurrentContextWithChanges();
             if (triggerDocument == null)
             {
@@ -153,7 +179,7 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
                     AsyncCompletionLogger.LogCommitTypeImportCompletionItem();
                 }
             }
-            
+
             if (session.TextView.Properties.TryGetProperty(CompletionSource.TargetTypeFilterExperimentEnabled, out bool isExperimentEnabled) && isExperimentEnabled)
             {
                 // Capture the % of committed completion items that would have appeared in the "Target type matches" filter

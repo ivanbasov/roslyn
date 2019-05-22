@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 using Microsoft.CodeAnalysis.Completion;
+using Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion;
 using Microsoft.VisualStudio.Text;
 using AsyncCompletionData = Microsoft.VisualStudio.Language.Intellisense.AsyncCompletion.Data;
 using RoslynTrigger = Microsoft.CodeAnalysis.Completion.CompletionTrigger;
@@ -97,5 +98,13 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
 
             return false;
         }
+
+        internal static void AddProperty(this IAsyncCompletionSession session, CompletionService completionService, string propertyName, object value) =>
+            session.Properties.AddProperty(GetPropertyName(completionService, propertyName), value);
+
+        internal static bool TryGetProperty<TProperty>(this IAsyncCompletionSession session, CompletionService completionService, string propertyName, out TProperty value) =>
+            session.Properties.TryGetProperty(GetPropertyName(completionService, propertyName), out value);
+
+        private static string GetPropertyName(CompletionService completionService, string propertySuffix) => $"{completionService.Language}_{propertySuffix}";
     }
 }

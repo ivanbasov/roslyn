@@ -31,7 +31,6 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
     internal class CompletionSource : ForegroundThreadAffinitizedObject, IAsyncCompletionSource
     {
         internal const string RoslynItem = nameof(RoslynItem);
-        internal const string TriggerSnapshot = nameof(TriggerSnapshot);
         internal const string CompletionListSpan = nameof(CompletionListSpan);
         internal const string InsertionText = nameof(InsertionText);
         internal const string HasSuggestionItemOptions = nameof(HasSuggestionItemOptions);
@@ -103,7 +102,19 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
 
             // In case of calls with multiple completion services for the same view (e.g. TypeScript and C#), those completion services must not be called simultaneously for the same session.
             // Therefore, in each completion session we use a list of commit character for a specific completion service and a specific content type.
+            // However, we do not know if PotentialCommitCharacters for a given service will be read before overwritten by another service.
             _textView.Properties[PotentialCommitCharacters] = service.GetRules().DefaultCommitCharacters;
+            //// The completion platform accumulates potential commit characters from all providers. Therefore, it is safe to commbine them if necessary.
+            //if (_textView.Properties.TryGetProperty(PotentialCommitCharacters, out ImmutableArray<char> existingPotentialCommitCharacters))
+            //{
+            //    existingPotentialCommitCharacters = existingPotentialCommitCharacters.Concat(service.GetRules().DefaultCommitCharacters).Distinct();
+            //}
+            //else
+            //{
+            //    existingPotentialCommitCharacters = service.GetRules().DefaultCommitCharacters;
+            //}
+
+            //_textView.Properties[PotentialCommitCharacters] = existingPotentialCommitCharacters;
 
             CheckForExperimentStatus(_textView, document);
 
@@ -252,21 +263,27 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
 
             // Have to store the snapshot to reuse it in some projections related scenarios
             // where data and session in further calls are able to provide other snapshots.
-            session.Properties.AddProperty(TriggerSnapshot, triggerLocation.Snapshot);
 
             // Store around the span this completion list applies to.  We'll use this later
             // to pass this value in when we're committing a completion list item.
+            //session.AddProperty(completionService, CompletionListSpan, completionList.Span);
             session.Properties.AddProperty(CompletionListSpan, completionList.Span);
 
             // This is a code supporting original completion scenarios: 
             // Controller.Session_ComputeModel: if completionList.SuggestionModeItem != null, then suggestionMode = true
             // If there are suggestionItemOptions, then later HandleNormalFiltering should set selection to SoftSelection.
-            session.Properties.AddProperty(HasSuggestionItemOptions, suggestionItemOptions != null);
+            if (suggestionItemOptions != null)
+            {
+                // If there are multiple providers per session (e.g. C# and TypeScript), 
+                // we switch to the suggesiton mode if at least one of them requires this.
+                session.Properties[HasSuggestionItemOptions] = true;
+            }
 
             session.Properties.AddProperty(InitialTriggerKind, roslynTrigger.Kind);
             var excludedCommitCharacters = GetExcludedCommitCharacters(completionList.Items);
             if (excludedCommitCharacters.Length > 0)
             {
+                //session.AddProperty(completionService, ExcludedCommitCharacters, excludedCommitCharacters);
                 session.Properties.AddProperty(ExcludedCommitCharacters, excludedCommitCharacters);
             }
 
@@ -280,13 +297,7 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
 
         public async Task<object> GetDescriptionAsync(IAsyncCompletionSession session, VSCompletionItem item, CancellationToken cancellationToken)
         {
-            if (!item.Properties.TryGetProperty(RoslynItem, out RoslynCompletionItem roslynItem) ||
-                !session.Properties.TryGetProperty(TriggerSnapshot, out ITextSnapshot triggerSnapshot))
-            {
-                return null;
-            }
-
-            var document = triggerSnapshot.GetOpenDocumentInCurrentContextWithChanges();
+            var document = session.ApplicableToSpan.TextBuffer.CurrentSnapshot.GetOpenDocumentInCurrentContextWithChanges();
             if (document == null)
             {
                 return null;
@@ -295,6 +306,11 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.AsyncComplet
             var service = document.GetLanguageService<CompletionService>();
 
             if (service == null)
+            {
+                return null;
+            }
+
+            if (!item.Properties.TryGetProperty(RoslynItem, out RoslynCompletionItem roslynItem))
             {
                 return null;
             }
